@@ -11,6 +11,12 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     
+    <!-- LIBRERÍAS PARA GENERACIÓN DE PDF -->
+    <!-- html2canvas: Convierte el HTML en un canvas (imagen) -->
+    <script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
+    <!-- jsPDF: Toma el canvas y lo empaqueta como un archivo PDF -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    
     <style>
         /* Estilo para la fuente Inter */
         body {
@@ -138,7 +144,6 @@
                 </button>
 
                 <!-- BARRA LATERAL (SIDEBAR) -->
-                <!-- Se usa flex y h-full para forzar el botón de logout al fondo -->
                 <nav id="sidebar" class="w-64 bg-gray-800 text-white p-4 fixed h-full z-40 transition-transform duration-300 mobile-menu-closed md:relative md:translate-x-0 flex flex-col">
                     <div class="flex items-center space-x-3 mb-8">
                         <svg class="h-8 w-8 text-blue-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
@@ -150,7 +155,7 @@
                     <p class="text-sm text-gray-400 mb-2">Bienvenido,</p>
                     <h3 class="text-lg font-semibold mb-6 truncate" id="affiliate-name">Juan José de la Cruz</h3>
                     
-                    <!-- Contenedor principal de los enlaces de navegación. Se agregó 'flex-1' para ocupar el espacio restante y empujar el botón de cierre hacia abajo. -->
+                    <!-- Contenedor principal de los enlaces de navegación. Se agregó 'flex-1' para ocupar el espacio restante. -->
                     <ul class="space-y-2 flex-1">
                         <li>
                             <a href="#" class="nav-link active" data-target="datos-personales">
@@ -521,8 +526,8 @@
                 
                 <h2 class="text-xl font-bold text-gray-800 mb-4 text-center">Carnet Digital APS</h2>
                 
-                <!-- Mockup del Carnet -->
-                <div class="bg-gradient-to-br from-blue-600 to-blue-800 text-white rounded-xl shadow-2xl p-6">
+                <!-- Mockup del Carnet, AÑADIMOS UN ID para que html2canvas pueda capturarlo -->
+                <div id="carnet-card" class="bg-gradient-to-br from-blue-600 to-blue-800 text-white rounded-xl shadow-2xl p-6">
                     <div class="flex justify-between items-center mb-4">
                         <span class="text-2xl font-bold">APS Salud</span>
                         <!-- Icono de Tarjeta de Crédito (simula el carnet) -->
@@ -566,12 +571,24 @@
                 </div>
                 
                 <p class="text-center text-xs text-gray-500 mt-4">Este carnet digital es válido para servicios a nivel nacional.</p>
+                
+                <!-- NUEVO BOTÓN DE DESCARGA PDF -->
+                <button id="download-carnet-pdf" class="mt-6 w-full py-3 px-4 rounded-lg text-base font-medium text-white bg-green-600 hover:bg-green-700 transition-colors flex items-center justify-center">
+                    <svg class="w-5 h-5 mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
+                    Descargar como PDF
+                </button>
+                <div id="pdf-loading-message" class="hidden mt-2 text-center text-sm text-blue-600">
+                    Generando PDF...
+                </div>
             </div>
         </div>
 
     </div> <!-- Fin de #app-container -->
 
     <script>
+        // Importación de jsPDF (requiere el uso de window.jspdf.jsPDF, ya que se carga mediante script CDN)
+        const { jsPDF } = window.jspdf;
+
         document.addEventListener('DOMContentLoaded', function () {
             // Elementos de pantalla
             const loginScreen = document.getElementById('login-screen');
@@ -603,6 +620,11 @@
             const saveAffiliateMsg = document.getElementById('save-affiliate-msg');
             const saveContactButton = document.getElementById('save-contact-button');
             const saveContactMsg = document.getElementById('save-contact-msg');
+            
+            // Elementos de PDF
+            const downloadCarnetPdfButton = document.getElementById('download-carnet-pdf');
+            const carnetCard = document.getElementById('carnet-card');
+            const pdfLoadingMessage = document.getElementById('pdf-loading-message');
 
 
             // --- LÓGICA DE NAVEGACIÓN Y RESPONSIVE ---
@@ -759,6 +781,52 @@
                     saveContactButton.classList.remove('bg-gray-400');
                     saveContactButton.classList.add('bg-blue-600', 'hover:bg-blue-700');
                 }, 3000);
+            });
+
+
+            // --- LÓGICA DE DESCARGA DE PDF ---
+            downloadCarnetPdfButton.addEventListener('click', function () {
+                // Deshabilitar botón y mostrar mensaje de carga
+                downloadCarnetPdfButton.disabled = true;
+                downloadCarnetPdfButton.classList.remove('bg-green-600', 'hover:bg-green-700');
+                downloadCarnetPdfButton.classList.add('bg-gray-400');
+                pdfLoadingMessage.classList.remove('hidden');
+
+                // Usamos html2canvas para renderizar el DIV del carnet como una imagen
+                html2canvas(carnetCard, { 
+                    scale: 2, // Aumenta la resolución de la imagen capturada para mejor calidad de PDF
+                    useCORS: true // Necesario si hay imágenes o fuentes externas (aunque aquí no hay)
+                }).then(canvas => {
+                    // Crea una URL de datos para la imagen
+                    const imgData = canvas.toDataURL('image/png');
+                    
+                    // Inicializa jsPDF en modo horizontal (landscape) para la forma de carnet
+                    const pdf = new jsPDF('l', 'mm', [90, 140]); // Dimensiones aproximadas de carnet en horizontal (90x140mm)
+
+                    // Calcula dimensiones para que la imagen ocupe todo el espacio del PDF
+                    const imgWidth = 140; 
+                    const imgHeight = canvas.height * imgWidth / canvas.width;
+                    
+                    // Añade la imagen al PDF (x=0, y=0)
+                    pdf.addImage(imgData, 'PNG', 0, 0, imgWidth, imgHeight);
+
+                    // Descargar el archivo
+                    pdf.save(`Carnet_APS_${document.getElementById('cedula').value}.pdf`);
+
+                    // Restaurar botón y ocultar mensaje de carga
+                    downloadCarnetPdfButton.disabled = false;
+                    downloadCarnetPdfButton.classList.remove('bg-gray-400');
+                    downloadCarnetPdfButton.classList.add('bg-green-600', 'hover:bg-green-700');
+                    pdfLoadingMessage.classList.add('hidden');
+                }).catch(error => {
+                    console.error("Error al generar el PDF:", error);
+                    // Restaurar botón en caso de error
+                    downloadCarnetPdfButton.disabled = false;
+                    downloadCarnetPdfButton.classList.remove('bg-gray-400');
+                    downloadCarnetPdfButton.classList.add('bg-green-600', 'hover:bg-green-700');
+                    pdfLoadingMessage.classList.add('hidden');
+                    // Aunque no usamos alert(), un console.error es suficiente para el desarrollo
+                });
             });
 
         });
